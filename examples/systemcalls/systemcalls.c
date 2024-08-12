@@ -1,4 +1,8 @@
 #include "systemcalls.h"
+#include <stdlib.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -16,8 +20,9 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
-
-    return true;
+    int ret = system(cmd);
+    //printf("command:%s . return value: %d ",cmd,ret);
+    return (ret == 0);
 }
 
 /**
@@ -38,8 +43,13 @@ bool do_exec(int count, ...)
 {
     va_list args;
     va_start(args, count);
-    char * command[count+1];
-    int i;
+    const char * command[count+1];
+    int i,exec_ret;
+    int child_status;
+    pid_t child_pid,pid_term=0;
+
+    printf("\n\n\n");
+
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
@@ -59,9 +69,30 @@ bool do_exec(int count, ...)
  *
 */
 
-    va_end(args);
+    i=0;
+    printf("------do_exec: Total number of commands: %d\n",count);
+    do{
+        printf("------do_exec: command%d:%s\n",i,command[i]);
+        i++;        
+    }while (command[i] != NULL);
+  
 
-    return true;
+    child_pid = fork();
+    if(child_pid == 0){
+        exec_ret = execv(command[0],(char* const*)command);
+        printf("Child Pid Returned %d!!!!\n",exec_ret);
+        exit(exec_ret);
+    }
+    else{
+        do {
+            pid_term = wait(&child_status);            
+        } while(pid_term != child_pid);
+
+    }
+
+    va_end(args);
+    printf("----------------child: return status %d \n",WEXITSTATUS(child_status));
+    return (WEXITSTATUS(child_status) == 0);
 }
 
 /**
@@ -74,7 +105,8 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     va_list args;
     va_start(args, count);
     char * command[count+1];
-    int i;
+    int i,exec_ret,child_status;
+    pid_t pid_term,child_pid;
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
@@ -92,6 +124,30 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+
+
+int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+if (fd < 0) { perror("open"); abort(); }
+switch (child_pid = fork()) {
+  case -1: perror("fork"); abort();
+  case 0:
+  //child
+    if (dup2(fd, 1) < 0) { perror("dup2"); abort(); }
+    close(fd);
+    exec_ret = execv(command[0],(char* const*)command);
+    printf("Child Pid Returned %d!!!!\n",exec_ret);
+    exit(exec_ret);
+  default:
+    close(fd);
+        do {
+        pid_term = wait(&child_status);            
+    } while(pid_term != child_pid);
+/* do whatever the parent wants to do. */
+    }
+    
+
+
+
 
     va_end(args);
 
